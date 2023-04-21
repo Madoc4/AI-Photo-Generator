@@ -79,7 +79,7 @@ for epoch in range(num_epochs):
         labels_real = torch.ones(real_images.size(0), 1).to(device)
         labels_fake = torch.zeros(real_images.size(0), 1).to(device)
         # Generate noise for the generator
-        noise = torch.randn(batch_size, latent_size, device=device)
+        noise = torch.randn(real_images.size(0), latent_size, device=device)
 
         # Generate a batch of fake images
         fake_images = generator(noise)
@@ -89,24 +89,26 @@ for epoch in range(num_epochs):
         discriminator_fake = discriminator(fake_images)
 
         # Create labels for the loss functions
-        labels_real = torch.ones(batch_size, 1, device=device)
-        labels_fake = torch.zeros(batch_size, 1, device=device)
-
-        # Assuming labels_real has shape (batch_size, num_classes)
         batch_size, num_classes = labels_real.shape
+        # Create labels for real images
+        labels_real = torch.ones((batch_size, 1)).to(device)
+        # Resize labels to match discriminator output shape
 
-        # Add spatial dimensions to the tensor
-        labels_real = labels_real.view(batch_size, num_classes, 1, 1)
+        print(f'discriminator shape:  {discriminator_real.squeeze().shape}')
+        print(f'labels_real shape: {labels_real.squeeze().shape}')
+        labels_real_resized = labels_real.repeat_interleave(discriminator_real.shape[-1]).view(discriminator_real.shape)
+        labels_fake_resized = labels_fake.repeat_interleave(discriminator_fake.shape[-1]).view(discriminator_fake.shape)
 
-        # Resize the tensor to the desired size
-        labels_real_resized = F.interpolate(labels_real, size=(36, 1), mode='nearest')
-        labels_fake_resized = F.interpolate(labels_fake.view(labels_fake.size(0), labels_fake.size(1), 1, 1),
-                                            size=(196, 1), mode='nearest')
+        print(f'resized labels_real shape: {labels_real_resized.squeeze().shape}')
 
-        # Calculate the loss for the discriminator
-        loss_d_real = F.binary_cross_entropy(discriminator_real.squeeze(),
-                                      torch.ones(discriminator_real.squeeze().size()).to(device))
-        loss_d_fake = loss_fn(discriminator_fake, labels_fake_resized)
+        loss_d_real = loss_fn(discriminator_real.squeeze(), labels_real_resized.squeeze())
+        loss_d_fake = loss_fn(discriminator_fake.squeeze(), labels_fake_resized.squeeze())
+
+        print(loss_d_real)
+        print(loss_d_fake)
+
+        # Compute losses for discriminator
+        loss_fn = nn.BCEWithLogitsLoss()
         loss_d = loss_d_real + loss_d_fake
 
         # Backpropagate the gradients and update the discriminator weights
@@ -115,12 +117,12 @@ for epoch in range(num_epochs):
         optimizer_d.step()
 
         # Train the generator
-        noise = torch.randn(real_images.size(0), 100).to(device)
+        noise = torch.randn(real_images.size(0), latent_size, device=device)
         fake_images = generator(noise)
         discriminator_fake = discriminator(fake_images)
         loss_g = loss_fn(discriminator_fake, labels_real)
+
         generator.zero_grad()
-        optimizer_g.zero_grad()
         loss_g.backward()
         optimizer_g.step()
 
@@ -128,6 +130,7 @@ for epoch in range(num_epochs):
         print(f"Epoch {epoch + 1}/{num_epochs}, Generator Loss: {loss_g:.4f}, Discriminator Loss: {loss_d:.4f}")
         if (epoch + 1) % 10 == 0:
             torch.save(generator.state_dict(), f"Downloads/AI-Photo-Generator/generator{epoch + 1}.pth")
+
 
 # Generate a single photo and save it
 generator.eval()
